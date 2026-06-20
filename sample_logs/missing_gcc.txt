@@ -1,0 +1,4 @@
+Building wheels for collected packages: fasttext
+  Building wheel for fasttext (setup.py) ... error
+  error: command 'gcc' failed with exit status 1
+  Compilation aborted. ERROR: Failed to compile native C++ system bindings. build-essential tools are missing on this Linux bare-metal machine.
