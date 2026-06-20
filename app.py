@@ -9,6 +9,7 @@ from core.environment_resolver import EnvironmentResolver
 from core.runtime_resolver import RuntimeResolver
 from core.auditor import CodeAuditor
 from services.pypi_client import PyPIClient
+from services.pendo_tracker import track as pendo_track
 
 # Configure structured enterprise logging for code quality audit checks
 logging.basicConfig(level=logging.INFO)
@@ -174,6 +175,12 @@ class BankaiOrchestrator:
                         if registry_data.get("valid") and registry_data.get("all_releases"):
                             live_registry_cache[pkg] = {"all_releases": registry_data["all_releases"]}
                             confidence_flags["pypi_validated"] = True
+                            pendo_track("pypi_registry_validated", properties={
+                                "package_name": pkg,
+                                "releases_count": len(registry_data["all_releases"]),
+                                "is_valid": True,
+                                "lookup_source": "pypi_org",
+                            })
 
                     try:
                         plan = self.healer.generate_recovery_plan(raw_dataclass_obj, live_registry_cache)
@@ -187,10 +194,27 @@ class BankaiOrchestrator:
                                     "command": cmd,
                                     "explanation": exp_text
                                 })
+                            pendo_track("recovery_plan_generated", properties={
+                                "analysis_id": analysis_id,
+                                "command_count": len(plan["commands"]),
+                                "packages_resolved": len(raw_dataclass_obj.conflicts),
+                                "has_pypi_validation": confidence_flags.get("pypi_validated", False),
+                            })
                     except Exception:
                         logger.exception("Healer command compilation step exception trapped")
 
+            pendo_track("error_domain_classified", properties={
+                "analysis_id": analysis_id,
+                "has_system_fault": "🖥️ System C-Library" in domain_badges,
+                "has_environment_fault": "🌐 Environment Path" in domain_badges,
+                "has_runtime_fault": "⚙️ Runtime Infrastructure" in domain_badges,
+                "has_dependency_fault": "📦 Package Dependency" in domain_badges,
+                "total_domains_detected": len(domain_badges),
+            })
+
             # ─── LEVEL 2: AI INSIGHT SERVICE AIR-LOCK (CodeAuditor Integration) ───
+            used_ai_fallback = False
+            ai_provider = "gemini" if gemini_api_key else "groq" if kwargs.get("groq_api_key") else "deterministic"
             try:
                 ai_insights = self.auditor.fetch_gemini_insights(
                     raw_log_text=raw_log_text, 
@@ -200,10 +224,18 @@ class BankaiOrchestrator:
                 )
             except Exception:
                 logger.exception("AI Context Engine Circuit Breaker Tripped")
+                used_ai_fallback = True
                 ai_insights = {
                     "explanation": "DependenceDoc has successfully mapped the system failure parameters using local rule tables.",
                     "pre_thinking": "Deterministic checks verified clear."
                 }
+            pendo_track("ai_insights_generated", properties={
+                "analysis_id": analysis_id,
+                "ai_provider": ai_provider,
+                "used_fallback": used_ai_fallback,
+                "has_explanation": bool(ai_insights.get("explanation")),
+                "has_pre_thinking": bool(ai_insights.get("pre_thinking")),
+            })
 
             final_confidence_score, confidence_explanations = self.calculate_explainable_confidence(confidence_flags)
 
@@ -235,6 +267,11 @@ class BankaiOrchestrator:
 
         except Exception as catastrophic_err:
             logger.critical(f"Catastrophic Pipeline Process Interrupted: {catastrophic_err}")
+            pendo_track("diagnosis_failed", properties={
+                "analysis_id": analysis_id,
+                "error_message": str(catastrophic_err)[:200],
+                "error_type": type(catastrophic_err).__name__,
+            })
             return {
                 "analysis_id": analysis_id,
                 "detected_domains": ["Emergency Fallback Mode"],

@@ -1,6 +1,7 @@
 from packaging.specifiers import SpecifierSet, InvalidSpecifier
 from packaging.version import Version
 from models.package import ConflictModel, PipelineReportModel
+from services.pendo_tracker import track as pendo_track
 
 class DetectiveEngine:
     def __init__(self):
@@ -84,6 +85,12 @@ class DetectiveEngine:
                                 verdict=f"Installed version {installed_ver_str} violates constraint boundaries ({spec_set})."
                             )
                         )
+                        pendo_track("dependency_conflict_detected", properties={
+                            "package_name": pkg,
+                            "installed_version": installed_ver_str,
+                            "required_specifiers": str(spec_set)[:100],
+                            "conflict_count": len(report.conflicts),
+                        })
                 except Exception:
                     continue
 

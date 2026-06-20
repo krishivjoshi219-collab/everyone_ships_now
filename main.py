@@ -4,6 +4,7 @@ import streamlit as st
 import graphviz
 from app import BankaiOrchestrator
 from services.pdf_generator import PDFReportEngine
+from services.pendo_tracker import track as pendo_track
 
 # ─── 🚨 PRODUCTION CONFIGURATION ───
 # Paste your final unlisted 2-3 minute YouTube/Loom showcase link here!
@@ -44,11 +45,24 @@ st.sidebar.markdown("---")
 # Sleek, native success banner for Novus integration
 st.sidebar.success("📊 Novus Analytics Active")
 
+SAMPLE_CATEGORIES = {
+    "dependency_conflict.txt": "dependency_conflict",
+    "missing_gcc.txt": "os_build_error",
+    "module_not_found.txt": "module_not_found",
+    "missing_api_key.txt": "missing_env_token",
+}
+
 def load_sample_file(filename: str):
     path = os.path.join("sample_logs", filename)
     try:
         with open(path, "r") as f:
-            st.session_state["log_input"] = f.read()
+            content = f.read()
+            st.session_state["log_input"] = content
+            pendo_track("sample_log_loaded", properties={
+                "sample_filename": filename,
+                "sample_category": SAMPLE_CATEGORIES.get(filename, "unknown"),
+                "sample_log_length": len(content),
+            })
     except Exception as e:
         st.sidebar.error(f"Failed to load sample file: {e}")
 
@@ -126,6 +140,13 @@ if analyze_clicked:
     else:
         safe_log_data = log_data[:12000]
         
+        pendo_track("error_log_submitted", properties={
+            "log_length": len(log_data),
+            "log_truncated": len(log_data) > 12000,
+            "is_sample_log": log_data == st.session_state.get("log_input", ""),
+            "has_gemini_api_key": bool(gemini_key and gemini_key.strip()),
+        })
+        
         start_time = time.time()
         with st.spinner("Analyzing environment and generating recovery plan..."):
             payload = orchestrator.run_full_diagnosis(safe_log_data, gemini_api_key=gemini_key)
@@ -138,6 +159,19 @@ if analyze_clicked:
             health_before = max(15, 100 - len(domains_list) * 20) if domains_list else 90
             health_after = min(100, health_before + 55) if recovery_stack else max(health_before, 95)
             risk_badge = "🟢 LOW RISK" if conf_percentage > 80 else "🟡 MEDIUM RISK"
+            
+            pendo_track("diagnosis_completed", properties={
+                "analysis_id": payload.get("analysis_id", ""),
+                "detected_domains": str(domains_list),
+                "domain_count": len(domains_list),
+                "recovery_step_count": len(recovery_stack),
+                "confidence_percentage": conf_percentage,
+                "health_before": health_before,
+                "health_after": health_after,
+                "risk_badge": risk_badge,
+                "elapsed_time_seconds": elapsed_time,
+                "has_ai_insights": bool(payload.get("ai_insights", {}).get("explanation")),
+            })
         
         # Clean Metric Header
         st.markdown("### 📊 Analysis Results")
@@ -187,10 +221,26 @@ if analyze_clicked:
             for step in recovery_stack:
                 script_content += f"echo \"Executing Step {step.get('step')}...\"\n{step.get('command', '')}\n\n"
             
-            st.download_button("📋 Download Recovery Script (.sh)", data=script_content, file_name=f"recovery_{payload.get('analysis_id', 'UNKNOWN')}.sh", mime="text/x-shellscript", use_container_width=True)
+            script_file_name = f"recovery_{payload.get('analysis_id', 'UNKNOWN')}.sh"
+            pendo_track("recovery_script_exported", properties={
+                "analysis_id": payload.get("analysis_id", ""),
+                "script_size_bytes": len(script_content.encode("utf-8")),
+                "step_count": len(recovery_stack),
+                "file_name": script_file_name,
+            })
+            st.download_button("📋 Download Recovery Script (.sh)", data=script_content, file_name=script_file_name, mime="text/x-shellscript", use_container_width=True)
             
             pdf_binary = pdf_engine.generate_executive_report(payload)
-            st.download_button("📄 Download PDF Report", data=pdf_binary, file_name=f"report_{payload.get('analysis_id', 'UNKNOWN')}.pdf", mime="application/pdf", use_container_width=True)
+            pdf_file_name = f"report_{payload.get('analysis_id', 'UNKNOWN')}.pdf"
+            pendo_track("pdf_report_exported", properties={
+                "analysis_id": payload.get("analysis_id", ""),
+                "pdf_size_bytes": len(pdf_binary) if pdf_binary else 0,
+                "recovery_step_count": len(recovery_stack),
+                "domains_detected_count": len(domains_list),
+                "confidence_percentage": conf_percentage,
+                "file_name": pdf_file_name,
+            })
+            st.download_button("📄 Download PDF Report", data=pdf_binary, file_name=pdf_file_name, mime="application/pdf", use_container_width=True)
 
 # ─── ARCHITECTURE EXPLORER ───
 st.markdown("---")
