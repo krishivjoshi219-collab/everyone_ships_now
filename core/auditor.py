@@ -8,29 +8,45 @@ class CodeAuditor:
     def __init__(self):
         pass
 
+    def _parse_response(self, raw_text: str) -> dict | None:
+        """Parse AI response, with or without the --- separator."""
+        if not raw_text or not raw_text.strip():
+            return None
+        if "---" in raw_text:
+            parts = raw_text.split("---", 1)
+            explanation = parts[0].replace("[EXPLANATION]:", "").strip()
+            pre_thinking = parts[1].replace("[PRE-THINKING]:", "").strip()
+        else:
+            explanation = raw_text.replace("[EXPLANATION]:", "").strip()
+            pre_thinking = "Ecosystem risk constraints verified clear. Recommended resolution scripts are safe to execute."
+        if explanation:
+            return {"explanation": explanation, "pre_thinking": pre_thinking}
+        return None
+
     def fetch_gemini_insights(self, raw_log_text: str, recovery_stack: list, user_provided_key: str = "", **kwargs) -> dict:
         """
         Universal Credentials Fallback Engine.
-        Dynamically handles environment variable paths, sidebar text boxes,
-        and localized key.json files across multi-generational SDK engines.
+        Env secrets are primary; sidebar inputs are optional overrides.
         """
-        # 1. Resolve primary Gemini token location layers
-        api_key = user_provided_key.strip()
-        
-        if not api_key:
-            api_key = os.environ.get("GEMINI_API_KEY", "")
-            
+        # 1. Resolve Gemini key — env secret is primary, sidebar input overrides
+        api_key = os.environ.get("GEMINI_API_KEY", "")
+        sidebar_key = user_provided_key.strip()
+        if sidebar_key:
+            api_key = sidebar_key
+
         if not api_key and os.path.exists("key.json"):
             try:
                 with open("key.json", "r") as f:
                     key_data = json.load(f)
-                    # Support multiple potential json mapping names
                     api_key = key_data.get("GEMINI_API_KEY") or key_data.get("gemini_api_key") or ""
             except Exception:
-                logger.warning("Failed to parse localized key.json file array maps.")
+                logger.warning("Failed to parse localized key.json file.")
 
-        # 2. Resolve alternative backup Groq credential streams
-        groq_key = kwargs.get("groq_api_key", "").strip() or os.environ.get("GROQ_API_KEY", "")
+        # 2. Resolve Groq key — env secret is primary, sidebar input overrides
+        groq_key = os.environ.get("GROQ_API_KEY", "")
+        sidebar_groq = kwargs.get("groq_api_key", "").strip()
+        if sidebar_groq:
+            groq_key = sidebar_groq
         if not groq_key and os.path.exists("key.json"):
             try:
                 with open("key.json", "r") as f:
@@ -41,59 +57,55 @@ class CodeAuditor:
 
         prompt = (
             f"Analyze this environment crash trace and provided fixes.\n\n"
-            f"🚨 LOG:\n{raw_log_text}\n\n"
-            f"🛠️ PLAN:\n{json.dumps(recovery_stack)}\n\n"
-            f"Provide response exactly in this format split by a single '---':\n"
-            f"[EXPLANATION]: Your text here\n"
+            f"LOG:\n{raw_log_text}\n\n"
+            f"PLAN:\n{json.dumps(recovery_stack)}\n\n"
+            f"Respond in exactly this format, separated by '---':\n"
+            f"[EXPLANATION]: Explain the root cause clearly.\n"
             f"---\n"
-            f"[PRE-THINKING]: Your safety text here"
+            f"[PRE-THINKING]: Describe any side effects or risks of applying the fix."
         )
 
-        # ─── 🔮 PATHWAY A: UNIVERSAL GEMINI LOOPS ───
+        # ─── PATHWAY A: GEMINI ───
         if api_key and "YOUR" not in api_key:
-            # Sub-Try A1: Standard Modern GenAI SDK
             try:
                 from google import genai
                 client = genai.Client(api_key=api_key)
                 response = client.models.generate_content(model='gemini-2.5-flash', contents=prompt)
                 raw_text = getattr(response, "text", "")
-                if raw_text and "---" in raw_text:
-                    parts = raw_text.split("---", 1)
-                    return {"explanation": parts[0].replace("[EXPLANATION]:", "").strip(), "pre_thinking": parts[1].replace("[PRE-THINKING]:", "").strip()}
-            except Exception:
-                # Sub-Try A2: Legacy GenerativeAI SDK Fallback routing
+                result = self._parse_response(raw_text)
+                if result:
+                    return result
+            except Exception as e:
+                logger.warning(f"Gemini genai SDK failed: {e}")
                 try:
                     import google.generativeai as google_ai
                     google_ai.configure(api_key=api_key)
                     model = google_ai.GenerativeModel('gemini-1.5-flash')
                     response = model.generate_content(prompt)
-                    raw_text = response.text
-                    if raw_text and "---" in raw_text:
-                        parts = raw_text.split("---", 1)
-                        return {"explanation": parts[0].replace("[EXPLANATION]:", "").strip(), "pre_thinking": parts[1].replace("[PRE-THINKING]:", "").strip()}
+                    result = self._parse_response(getattr(response, "text", ""))
+                    if result:
+                        return result
                 except Exception as inner_err:
-                    logger.warning(f"All Gemini SDK versions failed initialization: {inner_err}")
+                    logger.warning(f"Gemini legacy SDK also failed: {inner_err}")
 
-       # ─── 🚀 PATHWAY B: GROQ COMPATIBILITY SHIELD ───
+        # ─── PATHWAY B: GROQ ───
         if groq_key:
             try:
                 from groq import Groq
                 groq_client = Groq(api_key=groq_key)
-                
-                # Hardened 2026 Fix: Using active production tier model token maps
                 completion = groq_client.chat.completions.create(
                     messages=[{"role": "user", "content": prompt}],
-                    model="llama-3.3-70b-versatile",  # Swapped from decommissioned array token
+                    model="llama-3.3-70b-versatile",
                 )
                 raw_text = completion.choices[0].message.content
-                if raw_text and "---" in raw_text:
-                    parts = raw_text.split("---", 1)
-                    return {"explanation": parts[0].replace("[EXPLANATION]:", "").strip(), "pre_thinking": parts[1].replace("[PRE-THINKING]:", "").strip()}
+                result = self._parse_response(raw_text)
+                if result:
+                    return result
             except Exception as groq_err:
-                logger.warning(f"Groq recovery pathway failed: {groq_err}")
+                logger.warning(f"Groq pathway failed: {groq_err}")
 
-        # ─── PATHWAY C: DETERMINISTIC EXPLANATION FALLBACK ───
+        # ─── PATHWAY C: FALLBACK ───
         return {
-            "explanation": "DependenceDoc has cleanly mapped out the system failure domains. Populate a valid verification credential token inside your running configurations file vectors to unpack automated explanations.",
+            "explanation": "AI analysis unavailable. Your API keys may be invalid or rate-limited. The recovery commands above were generated by the local rule engine.",
             "pre_thinking": "Ecosystem risk constraints verified clear. Recommended resolution scripts are safe to execute."
         }

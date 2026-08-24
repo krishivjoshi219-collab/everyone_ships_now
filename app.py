@@ -1,4 +1,5 @@
 import uuid
+import threading
 import logging
 from core.sentinel import SentinelGuard
 from core.scout import ScoutParser
@@ -8,6 +9,7 @@ from core.system_resolver import SystemResolver
 from core.environment_resolver import EnvironmentResolver
 from core.runtime_resolver import RuntimeResolver
 from core.auditor import CodeAuditor
+from core.watcher import SandboxWatcher
 from services.pypi_client import PyPIClient
 
 # Configure structured enterprise logging for code quality audit checks
@@ -29,6 +31,7 @@ class BankaiOrchestrator:
         self.runtime_res = RuntimeResolver()
         self.auditor = CodeAuditor()
         self.pypi = PyPIClient()
+        self.watcher = SandboxWatcher(max_cpu_seconds=90.0, max_api_calls_allowed=10)
 
     def calculate_explainable_confidence(self, flags: dict) -> tuple:
         """
@@ -59,9 +62,45 @@ class BankaiOrchestrator:
         """
         The Core Pipeline Engine. Fully wrapped inside fault-tolerant isolation zones
         and equipped with an assertive multi-domain deadlock scoring interceptor.
+        Monitored by SandboxWatcher for execution safety and API rate control.
         """
         analysis_id = f"BANKAI-{str(uuid.uuid4())[:8].upper()}"
-        
+        self.watcher.reset_api_counter()
+        self.watcher.set_operational_phase(is_idle=False)
+
+        result_holder = [None]
+
+        def _pipeline_worker():
+            result_holder[0] = self._run_pipeline_core(analysis_id, raw_log_text, gemini_api_key, **kwargs)
+
+        worker_thread = threading.Thread(target=_pipeline_worker, daemon=True)
+        worker_thread.start()
+        clean_exit = self.watcher.monitor_memory_cage_timeout(worker_thread)
+        worker_thread.join(timeout=10)
+        self.watcher.set_operational_phase(is_idle=True)
+
+        payload = result_holder[0] if result_holder[0] else {
+            "analysis_id": analysis_id,
+            "detected_domains": ["⏱️ Execution Timeout"],
+            "recovery_order_stack": [],
+            "metrics": {
+                "health_before": 50, "health_after": 20,
+                "risk_badge": "🔴 WATCHER TIMEOUT",
+                "confidence_percentage": 0,
+                "verification_checklist": ["Watcher shield triggered: pipeline exceeded time limit."]
+            },
+            "ai_insights": {"explanation": "Analysis timed out.", "pre_thinking": "Retry with a shorter log."},
+            "raw_dataclass": None, "registry_cache": {}
+        }
+        payload["watcher_status"] = {
+            "verdict": "✅ CLEAN EXIT" if clean_exit else "🚨 TIMEOUT BREACH",
+            "api_calls_tracked": self.watcher.monitored_api_count,
+            "within_limits": self.watcher.monitored_api_count <= self.watcher.max_api_calls_allowed
+        }
+        return payload
+
+    def _run_pipeline_core(self, analysis_id: str, raw_log_text: str, gemini_api_key: str = "", **kwargs) -> dict:
+        """Internal pipeline — runs inside a watcher-monitored thread."""
         # ─── 🚨 LEVEL 1: CATASTROPHIC ENGINE FAIL-SAFE SHIELD ───
         try:
             # Step 1: Sentinel maps out fault signatures
@@ -167,6 +206,7 @@ class BankaiOrchestrator:
                     for conflict in raw_dataclass_obj.conflicts:
                         pkg = conflict.package
                         try:
+                            self.watcher.register_api_call_event()
                             registry_data = self.pypi.fetch_all_releases(pkg)
                         except Exception:
                             registry_data = {"valid": False, "all_releases": []}
