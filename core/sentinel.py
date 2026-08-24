@@ -10,7 +10,7 @@ class SentinelGuard:
         log_lower = raw_log.lower()
         return {
             "system": any(sig in log_lower for sig in ["gcc", "openssl", "failed building wheel", "libssl"]),
-            "environment": any(sig in log_lower for sig in ["modulenotfounderror", "no module named"]),
-            "runtime": any(sig in log_lower for sig in ["keyerror", "database_url", "connection refused", "already in use"]),
+            "environment": any(sig in log_lower for sig in ["modulenotfounderror", "no module named", "keyerror", "environment variable", "local env"]),
+            "runtime": any(sig in log_lower for sig in ["database_url", "connection refused", "already in use", "port"]),
             "dependency": any(sig in log_lower for sig in ["requires", "conflict", "incompatible", "version constraint"])
         }
