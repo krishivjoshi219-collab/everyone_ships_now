@@ -12,7 +12,18 @@ class EnvironmentResolver:
             "pptx": "python-pptx",
             "fitz": "PyMuPDF",
             "usb": "pyusb",
-            "serial": "pyserial"
+            "serial": "pyserial",
+            "attr": "attrs",
+            "crypto": "pycryptodome",
+            "dateutil": "python-dateutil",
+            "dotenv": "python-dotenv",
+            "git": "GitPython",
+            "jose": "python-jose",
+            "jwt": "PyJWT",
+            "kafka": "kafka-python",
+            "magic": "python-magic",
+            "opengl": "PyOpenGL",
+            "psycopg2": "psycopg2-binary"
         }
 
     def resolve(self, raw_log: str) -> dict:
