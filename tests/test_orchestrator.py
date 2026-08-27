@@ -1,4 +1,7 @@
 import unittest
+import json
+import os
+import subprocess
 from core.sentinel import SentinelGuard
 from core.scout import ScoutParser
 from core.detective import DetectiveEngine
@@ -46,6 +49,17 @@ class TestDetectiveEngine(unittest.TestCase):
         self.assertEqual(report.status, "conflict_detected")
         self.assertEqual(len(report.conflicts), 1)
 
+    def test_deadlock_detection(self):
+        scout_payload = {
+            "requirements": [
+                {"package": "cachetools", "specifiers": "==3.1.1"},
+                {"package": "cachetools", "specifiers": "<8,>=5.5"}
+            ],
+            "installed": [{"package": "cachetools", "version": "3.1.1"}]
+        }
+        report = self.detective.analyze_conflicts(scout_payload)
+        self.assertEqual(report.status, "unresolvable_deadlock")
+
 class TestHealerEngine(unittest.TestCase):
     def setUp(self):
         self.healer = HealerEngine()
@@ -71,6 +85,15 @@ class TestResolvers(unittest.TestCase):
         res = EnvironmentResolver().resolve("ModuleNotFoundError: No module named 'yaml'")
         self.assertIsNotNone(res)
         self.assertIn("pip install pyyaml", res["command"])
+
+    def test_environment_resolver_extended_mapping(self):
+        res_cv2 = EnvironmentResolver().resolve("ModuleNotFoundError: No module named 'cv2'")
+        self.assertIsNotNone(res_cv2)
+        self.assertIn("pip install opencv-python", res_cv2["command"])
+
+        res_sklearn = EnvironmentResolver().resolve("ModuleNotFoundError: No module named 'sklearn'")
+        self.assertIsNotNone(res_sklearn)
+        self.assertIn("pip install scikit-learn", res_sklearn["command"])
 
     def test_runtime_resolver(self):
         res = RuntimeResolver().resolve("address already in use on port 8000")
@@ -109,6 +132,23 @@ class TestBankaiOrchestrator(unittest.TestCase):
         res = orchestrator.run_full_diagnosis(log)
         self.assertIn("analysis_id", res)
         self.assertTrue(res["metrics"]["confidence_percentage"] > 0)
+
+    def test_snapshot_export_import(self):
+        orchestrator = BankaiOrchestrator()
+        log = "ERROR: requires numpy<1.24,>=1.22, but you have numpy 1.26.0"
+        payload = orchestrator.run_full_diagnosis(log)
+        snapshot_json = orchestrator.export_snapshot(payload)
+        self.assertIsInstance(snapshot_json, str)
+        imported_payload = orchestrator.import_snapshot(snapshot_json)
+        self.assertEqual(imported_payload["analysis_id"], payload["analysis_id"])
+
+class TestCLIRunner(unittest.TestCase):
+    def test_cli_execution(self):
+        cmd = ["python3", "cli.py", "sample_logs/dependency_conflict.txt", "--json"]
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        self.assertEqual(result.returncode, 0)
+        data = json.loads(result.stdout)
+        self.assertIn("analysis_id", data)
 
 if __name__ == "__main__":
     unittest.main()

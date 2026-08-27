@@ -1,6 +1,7 @@
 import uuid
 import threading
 import logging
+import json
 from core.sentinel import SentinelGuard
 from core.scout import ScoutParser
 from core.detective import DetectiveEngine
@@ -57,6 +58,24 @@ class BankaiOrchestrator:
             factors.append("✓ Safe, exact command remediation plan generated (+10)")
             
         return min(score, 100), factors
+
+    def export_snapshot(self, payload: dict) -> str:
+        """
+        Exports an environment diagnostic snapshot payload into a serialized JSON string.
+        """
+        clean_payload = dict(payload)
+        clean_payload.pop("raw_dataclass", None)
+        return json.dumps(clean_payload, indent=2, default=str)
+
+    def import_snapshot(self, snapshot_json: str) -> dict:
+        """
+        Imports and validates a serialized environment snapshot JSON string back into payload dict format.
+        """
+        data = json.loads(snapshot_json)
+        if "analysis_id" not in data or "metrics" not in data:
+            raise ValueError("Invalid snapshot data: missing mandatory analysis_id or metrics fields.")
+        data["raw_dataclass"] = None
+        return data
 
     def run_full_diagnosis(self, raw_log_text: str, gemini_api_key: str = "", **kwargs) -> dict:
         """
