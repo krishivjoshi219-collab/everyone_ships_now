@@ -230,6 +230,7 @@ if analyze_clicked:
     if not log_data.strip():
         st.warning("Please paste an error log or use one of the Try It Instantly buttons above.")
     else:
+        safe_log_data = log_data[:12000]
         # ─── STRICT BYOK & TIER QUOTA INTERCEPTOR ───
         used_tries = st.session_state["tier_usage"].get(tier_id, 0)
         if not is_byok and used_tries >= tier_quota:
