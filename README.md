@@ -1,11 +1,16 @@
 # 🩺 DependenceDoc // Automated Environment Recovery & Dependency Hell Resolver
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](https://www.python.org/)
-[![Streamlit](https://img.shields.io/badge/Streamlit-1.30%2B-FF4B4B.svg)](https://streamlit.io/)
+[![Streamlit](https://img.shields.io/badge/Streamlit-1.30%2B-FF4B4B.svg)](https://everyoneshipsnow-gq6dxvgesrzovohusgvwde.streamlit.app/)
 [![VoltHacks 2026](https://img.shields.io/badge/VoltHacks-2026%20Submission-indigo.svg)](https://devpost.com)
+[![YouTube Demo](https://img.shields.io/badge/YouTube-Watch%20Demo%20(2%20min)-FF0000.svg?logo=youtube&logoColor=white)](https://youtu.be/x0sGtbO_G5I)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 > **Paste an error log. Get exact, mathematical terminal commands to restore your environment in seconds.**
+
+[![Watch Demo Video](https://img.youtube.com/vi/x0sGtbO_G5I/maxresdefault.jpg)](https://youtu.be/x0sGtbO_G5I)
+
+*▶️ [Watch the 2-Minute Official VoltHacks 2026 Walkthrough on YouTube](https://youtu.be/x0sGtbO_G5I)*
 
 DependenceDoc is an intelligent, multi-domain environment recovery framework built for developers, DevOps engineers, and researchers. It diagnoses chaotic terminal stack traces, detects PEP 440 dependency constraint conflicts, identifies missing native OS toolchains, isolates blocked infrastructure sockets, and compiles deterministic, non-breaking recovery scripts alongside AI-generated root-cause insights and 3-page executive PDF reports.
 
@@ -20,8 +25,8 @@ DependenceDoc is an intelligent, multi-domain environment recovery framework bui
   - 📦 **Package Dependency**: Complex PEP 440 version bounds, conflicting requirements, and unresolvable deadlocks.
 - **🕵️ PEP 440 Detective Engine**: Performs exact mathematical constraint solving over extracted requirement specifiers (`<`, `<=`, `>`, `>=`, `==`, `!=`). Detects mutually exclusive dependency deadlocks.
 - **💊 Live PyPI Release Sieve & Healer**: Queries PyPI indexes in real-time, sifting through historical package releases to locate the newest stable release satisfying all constraint boundaries without breaking parent packages.
+- **🤖 Dual AI Insight Air-Lock & Strict BYOK Tier Quotas**: Powered by **Google Gemini 3.8 Flash / Pro** and **Groq Cloud (GPT OSS 120B / Qwen 3.8)** to generate deep root-cause explanations and predictive side-effect risk simulations ("pre-thinking"). Includes a built-in Bring-Your-Own-Key management system with free quota tiers and unlimited developer runs.
 - **🛡️ Sandbox Execution Warden**: Enforces thread execution timeouts and API call rate limits to prevent runaway loops or API exhaustion during log analysis.
-- **🤖 Dual AI Insight Air-Lock**: Queries **Gemini 2.5 Flash** or **Groq LLaMA 3.3 70B** to generate deep root-cause explanations and predictive side-effect simulations ("pre-thinking"), with a zero-downtime deterministic fallback if API keys are absent.
 - **💻 Dual CLI & Web Dashboard**: Run via a polished interactive Streamlit dashboard (`main.py`) or directly in your terminal via the high-speed CLI (`cli.py`).
 - **📄 Executive Reports & Script Generator**: Exports single-click self-executing shell scripts (`.sh`) and multi-page vector PDF reports built with ReportLab.
 - **💾 Diagnostic Snapshot Serialization**: Export and import full diagnostic state snapshots as JSON for team collaboration and bug report attachments.

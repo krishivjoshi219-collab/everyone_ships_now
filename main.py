@@ -8,6 +8,9 @@ from services.pdf_generator import PDFReportEngine
 from services.pendo_tracker import track as pendo_track
 
 
+# ─── 🚨 PRODUCTION CONFIGURATION ───
+DEMO_VIDEO_URL = "https://youtu.be/x0sGtbO_G5I"
+
 st.set_page_config(
     page_title="DependenceDoc // Environment Recovery",
     page_icon="🩺",
@@ -134,6 +137,8 @@ else:
 
 st.sidebar.markdown("---")
 st.sidebar.success("📊 Novus Analytics Active")
+st.sidebar.markdown("### 🎥 VoltHacks Demo")
+st.sidebar.markdown("[▶️ Watch on YouTube](https://youtu.be/x0sGtbO_G5I)")
 
 SAMPLE_CATEGORIES = {
     "dependency_conflict.txt": "dependency_conflict",
@@ -203,6 +208,9 @@ if not st.session_state["log_input"]:
     with col_d:
         if st.button("🔑 Missing Env Token", use_container_width=True):
             load_sample_file("missing_api_key.txt"); st.rerun()
+
+    with st.expander("🎥 Watch The Official 2-Minute Demo Video (YouTube)", expanded=False):
+        st.video(DEMO_VIDEO_URL)
 
 st.markdown("---")
 
