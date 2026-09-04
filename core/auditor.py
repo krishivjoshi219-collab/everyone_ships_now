@@ -70,11 +70,15 @@ class CodeAuditor:
             try:
                 from google import genai
                 client = genai.Client(api_key=api_key)
-                response = client.models.generate_content(model='gemini-2.5-flash', contents=prompt)
-                raw_text = getattr(response, "text", "")
-                result = self._parse_response(raw_text)
-                if result:
-                    return result
+                for model_candidate in ['gemini-3.6-flash', 'gemini-2.5-flash']:
+                    try:
+                        response = client.models.generate_content(model=model_candidate, contents=prompt)
+                        raw_text = getattr(response, "text", "")
+                        result = self._parse_response(raw_text)
+                        if result:
+                            return result
+                    except Exception as model_err:
+                        logger.warning(f"Gemini model {model_candidate} failed: {model_err}")
             except Exception as e:
                 logger.warning(f"Gemini genai SDK failed: {e}")
                 try:
