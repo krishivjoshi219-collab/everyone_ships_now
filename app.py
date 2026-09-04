@@ -255,7 +255,9 @@ class BankaiOrchestrator:
                     raw_log_text=raw_log_text, 
                     recovery_stack=recovery_stack, 
                     user_provided_key=gemini_api_key,
-                    groq_api_key=kwargs.get("groq_api_key", "")
+                    groq_api_key=kwargs.get("groq_api_key", ""),
+                    provider=kwargs.get("provider", "gemini"),
+                    model_name=kwargs.get("model_name", "")
                 )
             except Exception:
                 logger.exception("AI Context Engine Circuit Breaker Tripped")

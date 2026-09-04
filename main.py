@@ -54,26 +54,86 @@ def get_orchestrator(): return BankaiOrchestrator()
 orchestrator = get_orchestrator()
 pdf_engine = PDFReportEngine()
 
+# ─── MODEL TIER CONFIGURATION & STRICT BYOK QUOTAS ───
+MODEL_CONFIGS = {
+    "Google Gemini": {
+        "provider": "gemini",
+        "models": {
+            "⚡ Gemini 3.8 Flash (Standard)": {"id": "gemini-3.8-flash", "tier": "gemini_flash", "quota": 5, "desc": "5 Free Tries on Shared Key"},
+            "🪶 Gemini Flash Lite (Fast)": {"id": "gemini-2.5-flash-lite", "tier": "gemini_lite", "quota": 10, "desc": "10 Free Tries on Shared Key"},
+            "🧠 Gemini 2.5 Pro (Deep Reasoning)": {"id": "gemini-2.5-pro", "tier": "gemini_pro", "quota": 2, "desc": "2 Free Tries (Expensive)"},
+        }
+    },
+    "Groq Cloud": {
+        "provider": "groq",
+        "models": {
+            "🧠 Groq GPT OSS 120B (Deep Reasoning)": {"id": "openai/gpt-oss-120b", "tier": "groq_pro", "quota": 2, "desc": "2 Free Tries (Expensive)"},
+            "⚡ Groq Qwen 3.8 27B (Balanced)": {"id": "qwen/qwen3.8-27b", "tier": "groq_flash", "quota": 5, "desc": "5 Free Tries on Shared Key"},
+            "🪶 Groq GPT OSS 20B (Ultra-Fast)": {"id": "openai/gpt-oss-20b", "tier": "groq_lite", "quota": 10, "desc": "10 Free Tries on Shared Key"},
+        }
+    }
+}
+
+if "tier_usage" not in st.session_state:
+    st.session_state["tier_usage"] = {
+        "gemini_lite": 0,
+        "gemini_flash": 0,
+        "gemini_pro": 0,
+        "groq_lite": 0,
+        "groq_flash": 0,
+        "groq_pro": 0,
+    }
+
 # ─── SIDEBAR ───
-st.sidebar.markdown("### 🔑 API Integrations")
+st.sidebar.markdown("### 🤖 Model & Provider Selection")
+chosen_provider_name = st.sidebar.radio("AI Provider:", list(MODEL_CONFIGS.keys()))
+provider_info = MODEL_CONFIGS[chosen_provider_name]
+chosen_model_label = st.sidebar.selectbox("Model Tier:", list(provider_info["models"].keys()))
+selected_model_info = provider_info["models"][chosen_model_label]
+tier_id = selected_model_info["tier"]
+tier_quota = selected_model_info["quota"]
+model_id = selected_model_info["id"]
+provider_code = provider_info["provider"]
+
+st.sidebar.markdown("### 🔑 API Key (BYOK)")
 _gemini_env_set = bool(os.environ.get("GEMINI_API_KEY", ""))
 _groq_env_set = bool(os.environ.get("GROQ_API_KEY", ""))
-if _gemini_env_set:
-    st.sidebar.success("✅ Gemini API Key active (from Secrets)")
-if _groq_env_set:
-    st.sidebar.success("✅ Groq API Key active (from Secrets)")
-gemini_key = st.sidebar.text_input(
-    "Override Gemini API Key (optional):",
-    type="password",
-    placeholder="Leave blank to use your saved secret",
-    help="Your GEMINI_API_KEY secret is used by default. Paste a different key here only if you want to override it."
-)
-groq_key_override = st.sidebar.text_input(
-    "Override Groq API Key (optional):",
-    type="password",
-    placeholder="Leave blank to use your saved secret",
-    help="Your GROQ_API_KEY secret is used by default. Paste a different key here only if you want to override it."
-)
+
+user_gemini_key = ""
+user_groq_key = ""
+
+if provider_code == "gemini":
+    if _gemini_env_set:
+        st.sidebar.success("🛡️ Shared Gemini Key Active (from Secrets)")
+    user_gemini_key = st.sidebar.text_input(
+        "Enter Your Gemini Key (BYOK):",
+        type="password",
+        placeholder="Paste AIza... or AQ... key",
+        help="Provide your own Gemini API key for unlimited runs with zero quota restrictions."
+    )
+    is_byok = bool(user_gemini_key and user_gemini_key.strip())
+else:
+    if _groq_env_set:
+        st.sidebar.success("🛡️ Shared Groq Key Active (from Secrets)")
+    user_groq_key = st.sidebar.text_input(
+        "Enter Your Groq Key (BYOK):",
+        type="password",
+        placeholder="Paste gsk_... key",
+        help="Provide your own Groq API key for unlimited runs with zero quota restrictions."
+    )
+    is_byok = bool(user_groq_key and user_groq_key.strip())
+
+# Quota indicator display
+if is_byok:
+    st.sidebar.success("🚀 **BYOK Mode**: Unlimited runs unlocked on your key!")
+else:
+    used_tries = st.session_state["tier_usage"].get(tier_id, 0)
+    remaining_tries = max(0, tier_quota - used_tries)
+    if remaining_tries > 0:
+        st.sidebar.info(f"⚡ **Shared Key Quota**: {remaining_tries}/{tier_quota} free runs left ({chosen_model_label.split()[1]}).")
+    else:
+        st.sidebar.error(f"🔒 **Quota Exhausted**: 0/{tier_quota} free runs left for this tier. Enter your own key above to unlock unlimited runs!")
+
 st.sidebar.markdown("---")
 st.sidebar.success("📊 Novus Analytics Active")
 
@@ -170,17 +230,34 @@ if analyze_clicked:
     if not log_data.strip():
         st.warning("Please paste an error log or use one of the Try It Instantly buttons above.")
     else:
-        safe_log_data = log_data[:12000]
+        # ─── STRICT BYOK & TIER QUOTA INTERCEPTOR ───
+        used_tries = st.session_state["tier_usage"].get(tier_id, 0)
+        if not is_byok and used_tries >= tier_quota:
+            st.error(
+                f"🔒 **Free Quota Exhausted ({tier_quota}/{tier_quota} used)** for `{chosen_model_label}` on the shared host key!\n\n"
+                f"👉 **Strict BYOK Required**: To run unlimited diagnoses with this model, please enter your own {chosen_provider_name} API Key in the sidebar."
+            )
+            st.stop()
 
         pendo_track("error_log_submitted", properties={
             "log_length": len(log_data),
             "log_truncated": len(log_data) > 12000,
-            "has_gemini_api_key": bool(gemini_key and gemini_key.strip()),
+            "provider": provider_code,
+            "model": model_id,
+            "is_byok": is_byok,
         })
 
         start_time = time.time()
-        with st.spinner("Analyzing environment and generating recovery plan..."):
-            payload = orchestrator.run_full_diagnosis(safe_log_data, gemini_api_key=gemini_key, groq_api_key=groq_key_override)
+        with st.spinner(f"Analyzing environment with {chosen_model_label} and generating recovery plan..."):
+            payload = orchestrator.run_full_diagnosis(
+                safe_log_data, 
+                gemini_api_key=user_gemini_key, 
+                groq_api_key=user_groq_key,
+                provider=provider_code,
+                model_name=model_id
+            )
+            if not is_byok:
+                st.session_state["tier_usage"][tier_id] += 1
             elapsed_time = round(time.time() - start_time, 2)
 
             domains_list = payload.get('detected_domains', [])

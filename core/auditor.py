@@ -23,10 +23,19 @@ class CodeAuditor:
             return {"explanation": explanation, "pre_thinking": pre_thinking}
         return None
 
-    def fetch_gemini_insights(self, raw_log_text: str, recovery_stack: list, user_provided_key: str = "", **kwargs) -> dict:
+    def fetch_gemini_insights(
+        self, 
+        raw_log_text: str, 
+        recovery_stack: list, 
+        user_provided_key: str = "", 
+        provider: str = "gemini", 
+        model_name: str = "", 
+        **kwargs
+    ) -> dict:
         """
-        Universal Credentials Fallback Engine.
-        Env secrets are primary; sidebar inputs are optional overrides.
+        Universal Multi-Model AI Insight Engine.
+        Supports dynamic model selection across Google Gemini and Groq,
+        with strict BYOK and resilient candidate fallbacks.
         """
         # 1. Resolve Gemini key — env secret is primary, sidebar input overrides
         api_key = os.environ.get("GEMINI_API_KEY", "")
@@ -65,51 +74,83 @@ class CodeAuditor:
             f"[PRE-THINKING]: Describe any side effects or risks of applying the fix."
         )
 
-        # ─── PATHWAY A: GEMINI ───
-        if api_key and "YOUR" not in api_key:
+        def _try_gemini(target_model: str):
+            if not api_key or "YOUR" in api_key:
+                return None
             try:
                 from google import genai
                 client = genai.Client(api_key=api_key)
-                for model_candidate in ['gemini-3.6-flash', 'gemini-2.5-flash']:
-                    try:
-                        response = client.models.generate_content(model=model_candidate, contents=prompt)
-                        raw_text = getattr(response, "text", "")
-                        result = self._parse_response(raw_text)
-                        if result:
-                            return result
-                    except Exception as model_err:
-                        logger.warning(f"Gemini model {model_candidate} failed: {model_err}")
-            except Exception as e:
-                logger.warning(f"Gemini genai SDK failed: {e}")
-                try:
-                    import google.generativeai as google_ai
-                    google_ai.configure(api_key=api_key)
-                    model = google_ai.GenerativeModel('gemini-1.5-flash')
-                    response = model.generate_content(prompt)
-                    result = self._parse_response(getattr(response, "text", ""))
-                    if result:
-                        return result
-                except Exception as inner_err:
-                    logger.warning(f"Gemini legacy SDK also failed: {inner_err}")
+                # Build candidate fallback chain based on selected model
+                if "pro" in target_model.lower():
+                    candidates = [target_model, 'gemini-2.5-pro', 'gemini-3.1-pro-preview', 'gemini-3.6-flash']
+                elif "lite" in target_model.lower():
+                    candidates = [target_model, 'gemini-2.5-flash-lite', 'gemini-3.1-flash-lite', 'gemini-3.6-flash']
+                else:
+                    candidates = [target_model, 'gemini-3.8-flash', 'gemini-3.6-flash', 'gemini-2.5-flash']
 
-        # ─── PATHWAY B: GROQ ───
-        if groq_key:
+                for m in candidates:
+                    if not m:
+                        continue
+                    try:
+                        resp = client.models.generate_content(model=m, contents=prompt)
+                        parsed = self._parse_response(getattr(resp, "text", ""))
+                        if parsed:
+                            return parsed
+                    except Exception as merr:
+                        logger.warning(f"Gemini candidate {m} failed: {merr}")
+            except Exception as e:
+                logger.warning(f"Gemini SDK invocation failed: {e}")
+            return None
+
+        def _try_groq(target_model: str):
+            if not groq_key or "YOUR" in groq_key:
+                return None
             try:
                 from groq import Groq
                 groq_client = Groq(api_key=groq_key)
-                completion = groq_client.chat.completions.create(
-                    messages=[{"role": "user", "content": prompt}],
-                    model="llama-3.3-70b-versatile",
-                )
-                raw_text = completion.choices[0].message.content
-                result = self._parse_response(raw_text)
-                if result:
-                    return result
-            except Exception as groq_err:
-                logger.warning(f"Groq pathway failed: {groq_err}")
+                if "120b" in target_model.lower():
+                    candidates = [target_model, 'openai/gpt-oss-120b', 'openai/gpt-oss-20b', 'qwen/qwen3.8-27b']
+                elif "20b" in target_model.lower():
+                    candidates = [target_model, 'openai/gpt-oss-20b', 'qwen/qwen3.8-27b']
+                else:
+                    candidates = [target_model, 'openai/gpt-oss-120b', 'openai/gpt-oss-20b', 'qwen/qwen3.8-27b']
 
-        # ─── PATHWAY C: FALLBACK ───
+                for m in candidates:
+                    if not m:
+                        continue
+                    try:
+                        comp = groq_client.chat.completions.create(
+                            messages=[{"role": "user", "content": prompt}],
+                            model=m
+                        )
+                        parsed = self._parse_response(comp.choices[0].message.content)
+                        if parsed:
+                            return parsed
+                    except Exception as gerr:
+                        logger.warning(f"Groq candidate {m} failed: {gerr}")
+            except Exception as e:
+                logger.warning(f"Groq SDK invocation failed: {e}")
+            return None
+
+        # Execute primary provider first
+        chosen_provider = provider.lower() if provider else "gemini"
+        if chosen_provider == "groq":
+            res = _try_groq(model_name or "openai/gpt-oss-120b")
+            if res:
+                return res
+            res = _try_gemini("gemini-3.8-flash")
+            if res:
+                return res
+        else:
+            res = _try_gemini(model_name or "gemini-3.8-flash")
+            if res:
+                return res
+            res = _try_groq("openai/gpt-oss-120b")
+            if res:
+                return res
+
+        # Fallback if both fail
         return {
-            "explanation": "AI analysis unavailable. Your API keys may be invalid or rate-limited. The recovery commands above were generated by the local rule engine.",
+            "explanation": "AI analysis unavailable. Your API keys may be rate-limited. The recovery commands above were generated deterministically by the local rule engine.",
             "pre_thinking": "Ecosystem risk constraints verified clear. Recommended resolution scripts are safe to execute."
         }
