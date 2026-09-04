@@ -7,8 +7,6 @@ from app import BankaiOrchestrator
 from services.pdf_generator import PDFReportEngine
 from services.pendo_tracker import track as pendo_track
 
-# ─── 🚨 PRODUCTION CONFIGURATION ───
-DEMO_VIDEO_URL = "https://www.youtube.com/watch?v=ejuxOH8hIYc"
 
 st.set_page_config(
     page_title="DependenceDoc // Environment Recovery",
@@ -205,12 +203,6 @@ if not st.session_state["log_input"]:
     with col_d:
         if st.button("🔑 Missing Env Token", use_container_width=True):
             load_sample_file("missing_api_key.txt"); st.rerun()
-
-    st.markdown("### 🎥 Watch The 3-Minute Demo")
-    if DEMO_VIDEO_URL:
-        st.video(DEMO_VIDEO_URL)
-    else:
-        st.info("📺 **Demo Video Pending:** Add your YouTube URL to the code before final submission.")
 
 st.markdown("---")
 
