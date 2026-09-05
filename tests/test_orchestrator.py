@@ -100,12 +100,42 @@ class TestResolvers(unittest.TestCase):
         self.assertIsNotNone(res)
         self.assertIn("lsof", res["command"])
 
+from unittest.mock import patch, MagicMock
+
 class TestAuditorAndWatcher(unittest.TestCase):
     def test_code_auditor_fallback(self):
         auditor = CodeAuditor()
         res = auditor.fetch_gemini_insights("some crash log", [])
         self.assertIn("explanation", res)
         self.assertIn("pre_thinking", res)
+
+    @patch("groq.Groq")
+    def test_code_auditor_groq_rate_limit_fallback(self, mock_groq_cls):
+        mock_client = MagicMock()
+        mock_groq_cls.return_value = mock_client
+
+        mock_choice = MagicMock()
+        mock_choice.message.content = "[EXPLANATION]: Fallback succeeded after rate limit\n---\n[PRE-THINKING]: Risks clear"
+        mock_response = MagicMock()
+        mock_response.choices = [mock_choice]
+
+        mock_client.chat.completions.create.side_effect = [
+            Exception("429 Rate limit exceeded"),
+            mock_response
+        ]
+
+        auditor = CodeAuditor()
+        with self.assertLogs("core.auditor", level="WARNING") as cm:
+            res = auditor.fetch_gemini_insights(
+                "some crash log",
+                [],
+                provider="groq",
+                groq_api_key="fake_groq_key"
+            )
+
+        self.assertTrue(any("Groq candidate" in log and "429 Rate limit exceeded" in log for log in cm.output))
+        self.assertEqual(mock_client.chat.completions.create.call_count, 2)
+        self.assertEqual(res["explanation"], "Fallback succeeded after rate limit")
 
     def test_sandbox_watcher(self):
         watcher = SandboxWatcher(max_cpu_seconds=1.0)
