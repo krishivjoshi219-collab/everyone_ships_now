@@ -106,7 +106,7 @@ class CodeAuditor:
             if not groq_key or "YOUR" in groq_key:
                 return None
             try:
-                from groq import Groq
+                from groq import Groq, RateLimitError
                 groq_client = Groq(api_key=groq_key)
                 if "120b" in target_model.lower():
                     candidates = [target_model, 'openai/gpt-oss-120b', 'openai/gpt-oss-20b', 'qwen/qwen3.8-27b']
@@ -126,6 +126,8 @@ class CodeAuditor:
                         parsed = self._parse_response(comp.choices[0].message.content)
                         if parsed:
                             return parsed
+                    except RateLimitError as rle:
+                        logger.warning(f"Groq candidate {m} rate limit exceeded: {rle}")
                     except Exception as gerr:
                         logger.warning(f"Groq candidate {m} failed: {gerr}")
             except Exception as e:

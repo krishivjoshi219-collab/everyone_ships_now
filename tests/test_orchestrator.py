@@ -100,10 +100,33 @@ class TestResolvers(unittest.TestCase):
         self.assertIsNotNone(res)
         self.assertIn("lsof", res["command"])
 
+from unittest.mock import patch, MagicMock
+from groq import RateLimitError
+
 class TestAuditorAndWatcher(unittest.TestCase):
     def test_code_auditor_fallback(self):
         auditor = CodeAuditor()
         res = auditor.fetch_gemini_insights("some crash log", [])
+        self.assertIn("explanation", res)
+        self.assertIn("pre_thinking", res)
+
+    @patch("groq.Groq")
+    def test_code_auditor_groq_rate_limit_guard(self, mock_groq_cls):
+        mock_client = MagicMock()
+        mock_groq_cls.return_value = mock_client
+        mock_response = MagicMock()
+        mock_response.status_code = 429
+        rate_limit_err = RateLimitError(
+            message="Rate limit exceeded",
+            response=mock_response,
+            body={"error": {"message": "Rate limit exceeded"}}
+        )
+        mock_client.chat.completions.create.side_effect = rate_limit_err
+
+        auditor = CodeAuditor()
+        res = auditor.fetch_gemini_insights(
+            "some crash log", [], user_provided_key="", groq_api_key="gsk_dummy", provider="groq"
+        )
         self.assertIn("explanation", res)
         self.assertIn("pre_thinking", res)
 
